@@ -18,9 +18,11 @@
       src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"
     ></script>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/handlebars@latest/dist/handlebars.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-      const chartProperties = {
+
+        const chartProperties = {
         width: 1900,
         height: 700,
         timeScale: {
@@ -31,31 +33,19 @@
       const domElement = document.getElementById("tvchart");
       const chart = LightweightCharts.createChart(domElement, chartProperties);
       const candleSeries = chart.addCandlestickSeries();
-
       candleSeries.applyOptions({
         priceFormat: {
           type: "custom",
-          minMove: 0.00000001,
-          formatter: (price) => parseFloat(price).toFixed(8),
-        },
+          minMove: 0.001,
+          formatter: (price) => parseFloat(price).toFixed(3),
+        }
       });
-      //   var series2 = chart.addLineSeries({
-      //     color: "rgb(45, 120, 255)",
-      //     lineWidth: 2,
-      //   });
-
-      //   var timestamp1 = 1641268649;
-      //   var timestamp2 = 1641368649;
-
-      //   var data2 = [
-      //     { time: timestamp1, value: 46555 },
-      //     { time: timestamp2, value: 46169 },
-      //   ];
-      //   series2.setData(data2);
-
-      const symbol = "SHIBUSDT";
+      
+      // const el = document.querySelector('#tvchart');
+      // const symbol = el.dataset.symbol 
+      
       fetch(
-        `http://127.0.0.1:9665/fetchAPI?endpoint=https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=1000`
+        `http://127.0.0.1:9665/fetchAPI?endpoint=https://api.binance.com/api/v3/klines?symbol={{symbol}}&interval={{interval}}&limit=1000`
       )
         .then((res) => res.json())
         .then((data) => {
@@ -71,13 +61,12 @@
           candleSeries.setData(cdata);
         })
         .catch((err) => log(err));
-
       //Dynamic Chart
       const socket = io.connect("http://127.0.0.1:4000/");
-
       socket.on("KLINE", (pl) => {
         candleSeries.update(pl);
       });
+
     </script>
     <script>
       new Chart(document.getElementById("line-chart"), {
