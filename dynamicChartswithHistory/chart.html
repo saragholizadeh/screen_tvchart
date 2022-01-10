@@ -10,99 +10,297 @@
     <main>
       <div>
         <div id="tvchart"></div>
-        <canvas id="line-chart" width="800" height="150"></canvas>
+        <canvas id="line-chart" width="800" height="70"></canvas>
       </div>
     </main>
     <script
       type="text/javascript"
       src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"
     ></script>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@3.7.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/handlebars@latest/dist/handlebars.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <script>
 
-        const chartProperties = {
-        width: 1900,
-        height: 700,
-        timeScale: {
-          timeVisible: true,
-          secondsVisible: false,
-        },
-      };
-      const domElement = document.getElementById("tvchart");
-      const chart = LightweightCharts.createChart(domElement, chartProperties);
-      const candleSeries = chart.addCandlestickSeries();
-      candleSeries.applyOptions({
-        priceFormat: {
-          type: "custom",
-          minMove: 0.001,
-          formatter: (price) => parseFloat(price).toFixed(3),
-        }
-      });
-      
-      // const el = document.querySelector('#tvchart');
-      // const symbol = el.dataset.symbol 
-      
-      fetch(
-        `http://127.0.0.1:9665/fetchAPI?endpoint=https://api.binance.com/api/v3/klines?symbol={{symbol}}&interval={{interval}}&limit=1000`
-      )
-        .then((res) => res.json())
-        .then((data) => {
-          const cdata = data.map((d) => {
-            return {
-              time: d[0] / 1000,
-              open: parseFloat(d[1]),
-              high: parseFloat(d[2]),
-              low: parseFloat(d[3]),
-              close: parseFloat(d[4]),
-            };
-          });
-          candleSeries.setData(cdata);
-        })
-        .catch((err) => log(err));
-      //Dynamic Chart
-      const socket = io.connect("http://127.0.0.1:4000/");
-      socket.on("KLINE", (pl) => {
-        candleSeries.update(pl);
-      });
+      const CalculateRsi = (prices) => {
 
-    </script>
-    <script>
-      new Chart(document.getElementById("line-chart"), {
-        type: "line",
-        data: {
-          labels: [1500, 1600, 1700, 1750, 1800],
-          datasets: [
+        var sumGain = 0;
+        var sumLoss = 0;
+        var Tolerance = 10e-20 
+
+        for (var i = 1; i < prices.length; i++)
+        {
+            var difference = prices[i] - prices[i - 1];
+            if (difference >= 0)
             {
-              data: [86, 114, 106, 106, 107],
-              borderColor: "#3e95cd",
-              fill: {
-                target: "origin",
-                above: "rgba(140, 140, 140 , 0.1)",
-                below: "rgba(0, 0, 255, 0.5)", // And blue below the origin
-              },
-            },
-          ],
-        },
-        options: {
-          scales: {
-            myScalse: {
-              position: "right",
+                sumGain += difference;
+            }
+            else
+            {
+                sumLoss -= difference;
+            }
+        }
+
+        if (sumGain == 0) return 0;
+        if (Math.abs(sumLoss) < Tolerance) return 100;
+
+        var relativeStrength = sumGain / sumLoss;
+
+        return 100.0 - (100.0 / (1 + relativeStrength));
+      }
+      const calcuteMA = (data, size) => {
+        const isNumber = (subject) =>
+          typeof subject === "number" && subject === subject;
+
+        const isArray = Array.isArray;
+
+        const length = data.length;
+        if (!size) {
+          return data.reduce((a, b) => a + b) / length;
+        }
+        if (size <= 1) {
+          return data.slice();
+        }
+        if (size > length) {
+          return Array(length);
+        }
+        const prepare = size - 1;
+        const ret = [];
+        let sum = 0;
+        let i = 0;
+        let counter = 0;
+        let datum;
+        for (; i < length && counter < prepare; i++) {
+          datum = data[i];
+
+          if (isNumber(datum)) {
+            sum += datum;
+            counter++;
+          }
+        }
+        for (; i < length; i++) {
+          datum = data[i];
+
+          if (isNumber(datum)) {
+            sum += datum;
+          }
+
+          if (isNumber(data[i - size])) {
+            sum -= data[i - size];
+          }
+
+          ret[i] = sum / size;
+        }
+        return ret;
+      };
+
+      const tvChart = async () => {
+        const chartProperties = {
+          width: 1900,
+          height: 700,
+          timeScale: {
+            timeVisible: true,
+            secondsVisible: false,
+          },
+          crosshair: {
+            horzLine: {
+              visible: false,
+              labelVisible: false,
             },
           },
-          responsive: true,
-          maintainAspectRatio: true,
-          plugins: {
-            legend: {
+        };
+        const domElement = document.getElementById("tvchart");
+        const chart = LightweightCharts.createChart(
+          domElement,
+          chartProperties
+        );
+        const candleSeries = chart.addCandlestickSeries();
+        candleSeries.applyOptions({
+          priceFormat: {
+            type: "custom",
+            minMove: 0.0000001,
+            formatter: (price) => parseFloat(price).toFixed(7),
+          },
+          priceLine: {
+            axisLabelVisible: false,
+          },
+        });
+
+        // var tl = chart.addLineSeries({
+        //   color: "rgb(0,0,0)",
+        //   lineWidth: 2,
+        //   lastValueVisible: false,
+        //   priceLineVisible: false,
+        // });
+        // var tlData = [
+        //   { time: parseInt("{{tl.time1}}"), value: parseInt("{{tl.value1}}") },
+        //   { time: parseInt("{{tl.time2}}"), value: parseInt("{{tl.value2}}") },
+        // ];
+
+        // tl.setData(tlData);
+
+        var mov50 = chart.addLineSeries({
+          color: "rgb(0, 128, 255)",
+          lineWidth: 1,
+          lastValueVisible: false,
+          priceLineVisible: false,
+        });
+        mov50.applyOptions({
+          priceLine: {
+            lineWidth: 5,
+            axisLabelVisible: false,
+          },
+        });
+
+        var mov100 = chart.addLineSeries({
+          color: "rgb(230, 92, 0)",
+          lineWidth: 1,
+          lastValueVisible: false,
+          priceLineVisible: false,
+        });
+        mov100.priceScale("right").applyOptions({
+          drawTicks: false,
+        });
+
+        var mov200 = chart.addLineSeries({
+          color: "rgb(0, 92, 56)",
+          lineWidth: 1,
+          lastValueVisible: false,
+          priceLineVisible: false,
+        });
+        mov200.priceScale("right").applyOptions({
+          drawTicks: false,
+        });
+
+        var closeData = [];
+        var timestamps = [];
+
+        const fetchApi = await fetch(
+          // `http://127.0.0.1:9665/fetchAPI?endpoint=https://api.binance.com/api/v3/klines?symbol={{symbol}}&interval={{interval}}&limit=500`
+          `http://127.0.0.1:9665/fetchAPI?endpoint=https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=500`,
+        
+        ).catch(err=>console.log(err));
+        var data = await fetchApi.json();
+
+        const cdata = data.map((d) => {
+          closeData.push(parseFloat(d[4]));
+          timestamps.push(d[0] / 100);
+          return {
+            time: d[0] / 1000,
+            open: parseFloat(d[1]),
+            high: parseFloat(d[2]),
+            low: parseFloat(d[3]),
+            close: parseFloat(d[4]),
+          };
+        });
+
+        const values50 = calcuteMA(closeData, 50);
+        const values100 = calcuteMA(closeData, 100);
+        const values200 = calcuteMA(closeData, 200);
+
+        var move50Data = [];
+        for (let i = 0; i < data.length; i++) {
+          const obj = {};
+          (obj["time"] = data[i][0] / 1000),
+            (obj["value"] = parseFloat(values50[i]));
+          move50Data.push(obj);
+        }
+
+        var move100Data = [];
+        for (let i = 0; i < data.length; i++) {
+          const obj = {};
+          (obj["time"] = data[i][0] / 1000),
+            (obj["value"] = parseFloat(values100[i]));
+          move100Data.push(obj);
+        }
+
+        var move200Data = [];
+        for (let i = 0; i < data.length; i++) {
+          const obj = {};
+          (obj["time"] = data[i][0] / 1000),
+            (obj["value"] = parseFloat(values200[i]));
+          move200Data.push(obj);
+        }
+
+        candleSeries.setData(cdata);
+        mov50.setData(move50Data);
+        mov100.setData(move100Data);
+        mov200.setData(move200Data);
+
+        //Dynamic Chart
+        const socket = io.connect("http://127.0.0.1:4000/");
+        socket.on("KLINE", (pl) => {
+          candleSeries.update(pl);
+        });
+
+        // console.log(timestamps)
+        var lablesArr = timestamps;
+        const val = timestamps.length;
+        
+        // var dataArr 
+
+        closeData = closeData.slice(-14);
+        console.log(closeData)
+
+        console.log(dataa);
+
+        new Chart(document.getElementById("line-chart"), {
+          type: "line",
+          data: {
+            labels: lablesArr,
+            datasets: [
+              {
+                // data: dataArr,
+                data : [0,20,40,60,80,100],
+                borderColor: "#3e95cd",
+                fill: {
+                  target: "origin",
+                  above: "rgba(140, 140, 140 , 0.1)",
+                  below: "rgba(0, 0, 255, 0.5)", // And blue below the origin
+                },
+              },
+            ],
+          },
+          options: {
+            scales: {
+              myScalse: {
+                position: "right",
+              },
+            },
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                display: false,
+              },
+            },
+            title: {
               display: false,
             },
           },
-          title: {
-            display: false,
-          },
-        },
-      });
+        });
+      };
+
+      tvChart()
+
+      //RSI indocator
+      // var lables = `{{rsi.lables}}`;
+      // var data = `{{rsi.data}}`;
+
+      // lables = lables.replace("[", "").replace("]", "");
+      // lables = lables.split(",");
+      // var lablesArr = [];
+      // for (let i = 0; i < lables.length; i++) {
+      //   lablesArr.push(parseFloat(lables[i]));
+      // }
+
+      // data = data.replace("[", "").replace("]", "");
+      // data = data.split(",");
+      // var dataArr = [];
+      // for (let i = 0; i < data.length; i++) {
+      //   dataArr.push(parseFloat(data[i]));
+      // }
     </script>
   </body>
 </html>
