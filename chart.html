@@ -1,0 +1,402 @@
+<html lang="en">
+
+<head>
+  <style>
+    body {
+      width: 1900px;
+    }
+  </style>
+</head>
+
+<body class="container">
+  <main>
+    <div id="tvchart"></div>
+    <canvas id="line-chart" width="1500" height="90"></canvas>
+    </div>
+  </main>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@3.7.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/handlebars@latest/dist/handlebars.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.24.0/axios.min.js"></script>
+  <script>
+
+
+    const rsiCalc = (n, e) => {
+      for (
+        var a = e || 14, t = [], r = n.slice(0, a), l = a, s = 0, o = 0;
+        l < n.length;
+        l++, s = 0, o = 0
+      ) {
+        r.push(n[l]);
+        for (var u = 1; u < r.length; u++)
+          r[u] - r[u - 1] < 0
+            ? (o += Math.abs(r[u] - r[u - 1]))
+            : (s += r[u] - r[u - 1]);
+        var h = 100 - 100 / (1 + s / a / (o / a));
+        t.push(h), r.splice(0, 1);
+      }
+      return t;
+    };
+
+    const calcuteMA = (data, size) => {
+      const isNumber = (subject) =>
+        typeof subject === "number" && subject === subject;
+
+      const isArray = Array.isArray;
+
+      const length = data.length;
+      if (!size) {
+        return data.reduce((a, b) => a + b) / length;
+      }
+      if (size <= 1) {
+        return data.slice();
+      }
+      if (size > length) {
+        return Array(length);
+      }
+      const prepare = size - 1;
+      const ret = [];
+      let sum = 0;
+      let i = 0;
+      let counter = 0;
+      let datum;
+      for (; i < length && counter < prepare; i++) {
+        datum = data[i];
+
+        if (isNumber(datum)) {
+          sum += datum;
+          counter++;
+        }
+      }
+      for (; i < length; i++) {
+        datum = data[i];
+
+        if (isNumber(datum)) {
+          sum += datum;
+        }
+
+        if (isNumber(data[i - size])) {
+          sum -= data[i - size];
+        }
+
+
+        ret[i] = sum / size;
+      }
+      return ret;
+    };
+
+    const tvChart = async () => {
+      const chartProperties = {
+        width: 1900,
+        height: 800,
+        timeScale: {
+          timeVisible: true,
+          secondsVisible: false,
+          rightOffset: 10
+        },
+        crosshair: {
+          horzLine: {
+            visible: false,
+            labelVisible: false,
+          },
+        },
+      };
+
+      const domElement = document.getElementById("tvchart");
+      const chart = LightweightCharts.createChart(
+        domElement,
+        chartProperties
+      );
+
+      const candleSeries = chart.addCandlestickSeries();
+
+      var tick = parseFloat("{{tick}}");
+      var prec = parseFloat("{{precision}}")
+
+      candleSeries.applyOptions({
+        priceFormat: {
+          type: "custom",
+          minMove: tick,
+          formatter: (price) => parseFloat(price).toFixed(prec),
+        },
+        priceLine: {
+          axisLabelVisible: false,
+        },
+      });
+
+      var cdata;
+      var closeData = [];
+      var timestamps = [];
+
+      var lastClose;
+      var lastTimestamp;
+
+      const interval = "{{interval}}";
+      const exchange = "{{exchange}}";
+
+      var api = `{{api}}`
+      api = api.split(",");
+
+      var size;
+      if (exchange == "KUCOIN") {
+        size = 7
+      } else if (exchange == "BINANCE") {
+        size = 12
+      }
+
+      var data = []
+      for (let i = 0; i < api.length; i += size) {
+          const array = [];
+          for (let j = i; j < i + size; j++) {
+            array.push(api[j])
+          }
+          data.push(array)
+      }
+
+      if (exchange == "BINANCE") {
+        cdata = data.map((d) => {
+          closeData.push(parseFloat(d[4]));
+          timestamps.push(d[0] / 1000);
+          return {
+            time: d[0] / 1000,
+            open: parseFloat(d[1]),
+            high: parseFloat(d[2]),
+            low: parseFloat(d[3]),
+            close: parseFloat(d[4]),
+          };
+        });
+      } else if (exchange == "KUCOIN") {
+        data = data.reverse()
+        cdata = data.map((d) => {
+          closeData.push(parseFloat(d[2]));
+          timestamps.push(parseInt(d[0]));
+          return {
+            time: parseInt(d[0]),
+            open: parseFloat(d[1]),
+            high: parseFloat(d[3]),
+            low: parseFloat(d[4]),
+            close: parseFloat(d[2]),
+          };
+        });
+      }
+      candleSeries.setData(cdata);
+    
+      lastClose = closeData[closeData.length - 1];
+      lastTimestamp = timestamps[timestamps.length - 1];
+
+
+      var tl = chart.addLineSeries({
+        color: "rgb(0,0,0)",
+        lineWidth: 2,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+
+      var from = parseInt("{{from}}");
+      var to = parseInt(lastTimestamp);
+
+      var values1 = parseFloat("{{value1}}");
+      var values2 = parseFloat("{{value2}}");
+
+      var tlData = [
+        { time: from, value: values1 },
+        { time: to, value: values2 }
+      ]
+      
+      var mov50 = chart.addLineSeries({
+        color: "rgb(0, 128, 255)",
+        lineWidth: 1,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      mov50.applyOptions({
+        priceLine: {
+          lineWidth: 5,
+          axisLabelVisible: false,
+        },
+      });
+
+      var mov100 = chart.addLineSeries({
+        color: "rgb(230, 92, 0)",
+        lineWidth: 1,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      mov100.priceScale("right").applyOptions({
+        drawTicks: false,
+      });
+
+      var mov200 = chart.addLineSeries({
+        color: "rgb(0, 92, 56)",
+        lineWidth: 1,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      mov200.priceScale("right").applyOptions({
+        drawTicks: false,
+      });
+
+      var times = {};
+      if (exchange == "KUCOIN") {
+        times["1min"] = 60;
+        times["15min"] = 900;
+        times["30min"] = 1800;
+        times["1hour"] = 3600;
+        times["4hour"] = 14400;
+        times["1day"] = 86400;
+        times["1week"] = 604800;
+      } else if (exchange == "BINANCE") {
+        times["1m"] = 60;
+        times["15m"] = 900;
+        times["30m"] = 1800;
+        times["1h"] = 3600;
+        times["4h"] = 14400;
+        times["1d"] = 86400;
+        times["1w"] = 604800;
+      }
+
+      const timeframe = times[interval];
+
+      var newFrom = from - (30 * timeframe);
+
+      
+      var fromIndex = timestamps.indexOf(newFrom);
+      var toIndex = timestamps.indexOf(to);
+
+      var minus = toIndex - fromIndex;
+      
+      if(minus < 120){
+        fromIndex = fromIndex - 40
+        newFrom = timestamps[fromIndex]
+      }
+  
+      toIndex = timestamps.length - toIndex;
+
+      var visibleTimestamps = timestamps.slice(timestamps, 0 - toIndex); // delete elements after time2
+      visibleTimestamps.splice(0, (fromIndex + 14)); // delete elements before time1 
+
+      var visibleCandles = closeData.slice(closeData, 0 - toIndex);
+      visibleCandles.splice(0, fromIndex);
+
+      const values50 = calcuteMA(closeData, 50);
+      const values100 = calcuteMA(closeData, 100);
+      const values200 = calcuteMA(closeData, 200);
+
+      var move50Data = [];
+      for (let i = 0; i < data.length; i++) {
+        var time;
+        if (exchange == "BINANCE") {
+          time = data[i][0] / 1000
+        } else {
+          time = parseInt(data[i][0])
+        }
+        const obj = {};
+        (obj["time"] = time),
+          (obj["value"] = parseFloat(values50[i]));
+        move50Data.push(obj);
+      }
+
+      var move100Data = [];
+      for (let i = 0; i < data.length; i++) {
+        var time;
+        if (exchange == "BINANCE") {
+          time = data[i][0] / 1000
+        } else {
+          time = parseInt(data[i][0])
+        }
+        const obj = {};
+        (obj["time"] = time),
+          (obj["value"] = parseFloat(values100[i]));
+        move100Data.push(obj);
+      }
+
+      var move200Data = [];
+      for (let i = 0; i < data.length; i++) {
+        var time;
+        if (exchange == "BINANCE") {
+          time = data[i][0] / 1000
+        } else {
+          time = parseInt(data[i][0])
+        }
+        const obj = {};
+        (obj["time"] = time),
+          (obj["value"] = parseFloat(values200[i]));
+        move200Data.push(obj);
+      }
+
+      candleSeries.setData(cdata);
+      chart.timeScale().setVisibleRange({ from: newFrom, to: to })
+
+      tl.setData(tlData);
+      mov50.setData(move50Data);
+      mov100.setData(move100Data);
+      mov200.setData(move200Data);
+
+      const rsi = rsiCalc(visibleCandles, 14);
+      const newRSI = rsiCalc(closeData , 14);
+      const mov42 = calcuteMA(newRSI , 42)
+      mov42.splice(0, 41) 
+
+      // RSI indocator
+      new Chart(document.getElementById("line-chart"), {
+        type: "line",
+        data: {
+          labels: visibleTimestamps,
+          datasets: [
+            {
+              data: rsi,
+              borderColor: "#000000",
+              fill: {
+                target: "origin",
+                above: "rgba(140, 140, 140 , 0.1)",
+                below: "rgba(0, 0, 255, 0.5)", // And blue below the origin
+              },
+            },
+            {
+              data: mov42,
+              borderColor: "#0052cc",
+              borderWidth: 1,
+              fill: {
+                target: "origin",
+                above: "rgba(0, 0, 0 , 0)",
+                below: "rgba(0, 0, 0, 0)", // And blue below the origin
+              },
+            }
+          ],
+        },
+        options: {
+          elements: {
+            point: {
+              radius: 0,
+            },
+          },
+          scales: {
+            x: {
+              ticks: {
+                display: false,
+              },
+            },
+            myScalse: {
+              position: "right",
+            },
+
+          },
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: {
+            legend: {
+              display: false,
+            },
+          },
+          title: {
+            display: false,
+          },
+        },
+      });
+    };
+    tvChart();
+  </script>
+</body>
+
+</html>
