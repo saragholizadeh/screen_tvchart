@@ -21,13 +21,21 @@ http://localhost:3002/chart
 In body/row enter this object : (This is an example for BTC/USDT chart in timeframe 4h at exchange binance and the signal is LONG (buy))
 
 {
+
     "symbol" : "btc",
+    
     "pair" : "usdt",
+    
     "timestamp" : 334234,
+    
     "interval" : "4h",
+    
     "exchange" : "binance",
+    
     "type" : "resistnace",
+    
     "side" : "long"
+    
 }
 
 After sending request , if there was no problem , The png file will saved in your computer 
