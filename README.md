@@ -1,4 +1,4 @@
-Screen TVChart takes a screenshot of tradingview chart with resistance and support lines in server side (PNG format). 
+Screen TVChart plots a chart with your own data with resistance and support area + RSI chart + movingAverage 50,100,200 + signal postition (buy or sell). then saves this png file in server-side.
 
 It'a a Node.js API that uses chromium and node-html-to-image package
 
